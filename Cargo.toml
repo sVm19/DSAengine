@@ -1,0 +1,66 @@
+[package]
+name = "dsaengine"
+version = "0.1.0"
+edition = "2021"
+authors = ["Shubham Kumar <imshubham7004@gmail.com>"]
+description = "High-performance DSA Skill Engine for AI Agents"
+
+[dependencies]
+macros = { path = "./macros" }
+serde_json = "1.0"
+schemars = "0.8"
+
+# Core dependencies for metadata and performance tracking
+serde = { version = "1.0", features = ["derive"] }
+instant = "0.1"
+colored = "2.0"
+
+# Web Framework
+axum = "0.7"
+axum-folder-router = "0.4.1" 
+tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "set-header"] }
+tower = "0.4"
+
+# Networking Utilities
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# OpenAPI + Swagger UI
+utoipa = "4.2.3"
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+
+[features]
+# PAGE 0: Full System Activation
+# We point 'default' to 'full' so all 125+ skills load automatically.
+default = ["full"]
+
+# PAGE 1-12: The Paging System
+fundamentals = []
+arrays = []
+linked_lists = []
+stacks = []
+trees = []
+trees_adv = []
+graphs = []
+dp = []
+greedy = []
+backtracking = []
+sorting = []
+advanced = []
+
+# ADMIN PAGE: The master list of every skill category
+full = [
+    "fundamentals", 
+    "arrays", 
+    "linked_lists", 
+    "stacks", 
+    "trees", 
+    "trees_adv", 
+    "graphs", 
+    "dp", 
+    "greedy", 
+    "backtracking", 
+    "sorting", 
+    "advanced"
+]

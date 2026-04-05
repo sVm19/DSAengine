@@ -1,0 +1,9 @@
+c:\dsaengine\target\debug\deps\axum_folder_router-8bdbf7d4e9e485fc.d: C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\lib.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\generate.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\parse.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/main.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/api/route.rs
+
+c:\dsaengine\target\debug\deps\axum_folder_router-8bdbf7d4e9e485fc.dll: C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\lib.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\generate.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\parse.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/main.rs C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/api/route.rs
+
+C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\lib.rs:
+C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\generate.rs:
+C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\parse.rs:
+C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/main.rs:
+C:\Users\imshu\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\axum-folder-router-0.4.1\src\../examples/simple/api/route.rs:

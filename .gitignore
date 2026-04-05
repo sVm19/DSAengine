@@ -1,0 +1,18 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Incremental compilation caches
+**/incremental/
+
+# Cargo lock file is tracked for reproducible builds
+
+# Editor/workspace files
+.vscode/
+.idea/
+*.swp
+*.tmp
+*.DS_Store
+
+# Docker cache and local artifact files
+recipe.json
