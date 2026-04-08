@@ -130,23 +130,58 @@ impl AlienDictionary {
 
 
 // --- AXUM WEB BRIDGE ---
-use crate::utils::{api_docs, responses::*};
+use crate::utils::responses::*;
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
-#[macros::mcp_tool(name = "graphs.alien_dictionary", description = "Use this for solving alien dictionary problems. Trigger Keywords: graph, alien_dictionary, shortest path, traversal. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct AlienDictionaryRequest {
+    /// A list of words sorted lexicographically in the alien language.
+    pub words: Vec<String>,
 }
 
-async fn handle_alien_dictionary(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+#[macros::mcp_tool(name = "graphs.alien_dictionary", description = "Use this for solving alien dictionary problems. Trigger Keywords: graph, alien_dictionary, shortest path, traversal. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_alien_dictionary(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn handle_alien_dictionary(payload: Value) -> DsaResult<ResultBox<String>> {
+    let req: AlienDictionaryRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid AlienDictionaryRequest: {e}"),
+        hint: "Please provide a 'words' array of strings.".to_string(),
+    })?;
+
+    if req.words.is_empty() {
+        return Err(DsaError::InvalidInput {
+            message: "Empty word list provided.".to_string(),
+            hint: "Alien dictionary requires at least one word to analyze.".to_string(),
+        });
+    }
+
+    let words_refs: Vec<&str> = req.words.iter().map(|s| s.as_str()).collect();
+    let result = AlienDictionary::solve(&words_refs);
+
+    if result.is_empty() && req.words.len() > 1 {
+         // Some cases have 1 word and result is empty (if no chars), but usually it's a failure (cycle/prefix).
+         // If word count > 1 and result is empty, it's likely an invalid ordering.
+         return Err(DsaError::GraphError {
+             message: "Inconsistent character ordering.".to_string(),
+             hint: "The provided sorted words either contain a cycle or a prefix violation.".to_string(),
+         });
+    }
+
+    let solver = AlienDictionary;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(result)
+        .with_complexity(complexity)
+        .with_description("Derived character ordering from sorted word list."))
 }

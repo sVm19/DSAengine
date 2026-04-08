@@ -30,6 +30,7 @@ tracing-subscriber = "0.3"
 utoipa = "4.2.3"
 utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
 
+
 [features]
 # PAGE 0: Full System Activation
 # We point 'default' to 'full' so all 125+ skills load automatically.
