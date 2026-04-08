@@ -176,19 +176,56 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
-#[macros::mcp_tool(name = "advanced_topics.suffix_array", description = "Use this for solving suffix array problems. Trigger Keywords: suffix_array, suffix array, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct SuffixArrayRequest {
+    /// The text to build the suffix array for.
+    pub text: String,
+    /// Optional pattern to search for in the text.
+    pub query: Option<String>,
 }
 
-async fn handle_suffix_array(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+#[macros::mcp_tool(name = "advanced_topics.suffix_array", description = "Use this for solving suffix array problems. Trigger Keywords: suffix_array, suffix array, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_suffix_array(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn handle_suffix_array(payload: Value) -> DsaResult<ResultBox<serde_json::Value>> {
+    let req: SuffixArrayRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid SuffixArrayRequest: {e}"),
+        hint: "Provide 'text' and an optional 'query'.".to_string(),
+    })?;
+
+    if req.text.is_empty() {
+        return Err(DsaError::InvalidInput {
+            message: "Text cannot be empty.".to_string(),
+            hint: "Provide a non-empty string to build a suffix array.".to_string(),
+        });
+    }
+
+    let sa_index = SuffixArray::solve(&req.text);
+    let mut matches = Vec::new();
+
+    if let Some(ref q) = req.query {
+        matches = sa_index.search(q);
+    }
+
+    let solver = SuffixArray;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    let res_val = json!({
+        "suffix_order": sa_index.order,
+        "query_matches": if req.query.is_some() { Some(matches) } else { None }
+    });
+
+    Ok(ResultBox::success(res_val)
+        .with_complexity(complexity)
+        .with_description("Suffix array construction and search completed."))
 }

@@ -81,12 +81,52 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct DifferenceArrayUpdate {
+    pub start: usize,
+    pub end: usize,
+    pub delta: i32,
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct DifferenceArrayRequest {
+    pub base: Vec<i32>,
+    pub updates: Vec<DifferenceArrayUpdate>,
+}
+
 #[macros::mcp_tool(name = "difference_array", description = "Use this for solving difference array problems. Trigger Keywords: difference_array, difference array, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "temporary logic removed from auto-refactor; endpoint not yet restored"
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    let req: DifferenceArrayRequest = match serde_json::from_value(payload) {
+        Ok(req) => req,
+        Err(e) => {
+            let err = DsaError::InvalidInput {
+                message: format!("Invalid DifferenceArrayRequest: {e}"),
+                hint: "Provide 'base' and 'updates'[{start,end,delta}].".to_string(),
+            };
+            return err.into_response();
+        }
+    };
+
+    let updates = req
+        .updates
+        .iter()
+        .map(|u| (u.start, u.end, u.delta))
+        .collect::<Vec<_>>();
+    let updated = DifferenceArray::solve(&req.base, &updates);
+
+    let solver = DifferenceArray;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
     });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+
+    let res = ResultBox::success(json!({
+        "updated": updated
+    }))
+    .with_complexity(complexity)
+    .with_description("Difference-array updates applied.");
+
+    (StatusCode::OK, Json(res)).into_response()
 }

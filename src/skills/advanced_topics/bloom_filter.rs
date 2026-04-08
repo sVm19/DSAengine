@@ -127,19 +127,69 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
-#[macros::mcp_tool(name = "advanced_topics.bloom_filter", description = "Use this for solving bloom filter problems. Trigger Keywords: bloom_filter, bloom filter, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct BloomFilterRequest {
+    /// Desired size of the bitset (m). Defaults to 1024 if not provided.
+    pub bit_count: Option<usize>,
+    /// Number of hash probes (k). Defaults to 3 if not provided.
+    pub hash_count: Option<u32>,
+    /// Items to insert into the filter.
+    pub insert_items: Option<Vec<String>>,
+    /// Items to query against the filter.
+    pub query_items: Option<Vec<String>>,
 }
 
-async fn handle_bloom_filter(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+#[macros::mcp_tool(name = "advanced_topics.bloom_filter", description = "Use this for solving bloom filter problems. Trigger Keywords: bloom_filter, bloom filter, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_bloom_filter(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn handle_bloom_filter(payload: Value) -> DsaResult<ResultBox<serde_json::Value>> {
+    let req: BloomFilterRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid BloomFilterRequest: {e}"),
+        hint: "Provide 'bit_count', 'hash_count', 'insert_items', or 'query_items'.".to_string(),
+    })?;
+
+    let bit_count = req.bit_count.unwrap_or(1024);
+    let hash_count = req.hash_count.unwrap_or(3);
+    
+    let mut filter = BloomFilter::solve(bit_count, hash_count);
+    let mut results = Vec::new();
+    let mut inserted_count = 0;
+
+    if let Some(inserts) = req.insert_items {
+        inserted_count = inserts.len();
+        for item in inserts {
+            filter.insert(item.as_bytes());
+        }
+    }
+
+    if let Some(queries) = req.query_items {
+        for item in queries {
+            results.push(json!({
+                "item": item,
+                "exists": filter.contains(item.as_bytes())
+            }));
+        }
+    }
+
+    let solver = BloomFilter;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    let res_val = json!({
+        "queries": results,
+        "estimated_fp_rate": filter.estimated_false_positive_rate(inserted_count)
+    });
+
+    Ok(ResultBox::success(res_val)
+        .with_complexity(complexity)
+        .with_description("Bloom filter probabilistic membership test completed."))
 }

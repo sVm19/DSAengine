@@ -10,7 +10,7 @@ use std::hash::Hash;
 pub struct LRUCache;
 pub struct LruCacheState<K, V>
 where
-    K: Copy + Eq + Hash,
+    K: Clone + Eq + Hash,
 {
     capacity: usize,
     clock: u64,
@@ -18,6 +18,7 @@ where
     order: VecDeque<(K, u64)>,
 }
 
+#[derive(Clone)]
 struct LruEntry<V> {
     value: V,
     stamp: u64,
@@ -44,14 +45,14 @@ impl Complexity for LRUCache {
 impl LRUCache {
     pub fn solve<K, V>(capacity: usize) -> LruCacheState<K, V>
     where
-        K: Copy + Eq + Hash + Debug,
+        K: Clone + Eq + Hash + Debug,
     {
         Self::build(capacity)
     }
 
     pub fn build<K, V>(capacity: usize) -> LruCacheState<K, V>
     where
-        K: Copy + Eq + Hash + Debug,
+        K: Clone + Eq + Hash + Debug,
     {
         AgentLogger::log(
             AgentFeedback::Info,
@@ -69,7 +70,7 @@ impl LRUCache {
 
 impl<K, V> LruCacheState<K, V>
 where
-    K: Copy + Eq + Hash + Debug,
+    K: Clone + Eq + Hash + Debug,
 {
     pub fn get(&mut self, key: K) -> Option<&V> {
         if !self.values.contains_key(&key) {
@@ -85,7 +86,7 @@ where
         if let Some(entry) = self.values.get_mut(&key) {
             entry.stamp = stamp;
         }
-        self.order.push_back((key, stamp));
+        self.order.push_back((key.clone(), stamp));
         self.discard_stale_front();
 
         AgentLogger::log(
@@ -110,7 +111,7 @@ where
 
         self.clock += 1;
         let stamp = self.clock;
-        self.order.push_back((key, stamp));
+        self.order.push_back((key.clone(), stamp));
 
         if let Some(entry) = self.values.get_mut(&key) {
             let previous = std::mem::replace(&mut entry.value, value);
@@ -123,7 +124,7 @@ where
             return Some(previous);
         }
 
-        self.values.insert(key, LruEntry { value, stamp });
+        self.values.insert(key.clone(), LruEntry { value, stamp });
         AgentLogger::log(
             AgentFeedback::Step,
             format!("Inserted new LRU entry for key {:?}.", key),
@@ -156,7 +157,7 @@ where
     }
 
     fn discard_stale_front(&mut self) {
-        while let Some((key, stamp)) = self.order.front().copied() {
+        while let Some((key, stamp)) = self.order.front().cloned() {
             let is_stale = match self.values.get(&key) {
                 Some(entry) => entry.stamp != stamp,
                 None => true,
@@ -178,19 +179,63 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
-#[macros::mcp_tool(name = "advanced_topics.lru_cache", description = "Use this when the user needs to manage memory, handle 'Least Recently Used' data, or optimize database caching. Trigger Keywords: lru_cache, lru cache, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum LruOperation {
+    Put { key: String, value: String },
+    Get { key: String },
 }
 
-async fn handle_lru_cache(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct LruCacheRequest {
+    pub capacity: usize,
+    pub operations: Vec<LruOperation>,
+}
+
+#[macros::mcp_tool(name = "advanced_topics.lru_cache", description = "Use this when the user needs to manage memory, handle 'Least Recently Used' data, or optimize database caching. Trigger Keywords: lru_cache, lru cache, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_lru_cache(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn handle_lru_cache(payload: Value) -> DsaResult<ResultBox<serde_json::Value>> {
+    let req: LruCacheRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid LruCacheRequest: {e}"),
+        hint: "Provide 'capacity' and an 'operations' list of {type: 'put'|'get', key, value?}.".to_string(),
+    })?;
+
+    let mut cache = LRUCache::build::<String, String>(req.capacity);
+    let mut results = Vec::new();
+
+    for op in &req.operations {
+        match op {
+            LruOperation::Put { key, value } => {
+                let prev = cache.put(key.clone(), value.clone());
+                results.push(json!({ "op": "put", "key": key, "value": value, "previous": prev }));
+            }
+            LruOperation::Get { key } => {
+                let val = cache.get(key.clone()).map(|v| v.clone());
+                results.push(json!({ "op": "get", "key": key, "value": val }));
+            }
+        }
+    }
+
+    let solver = LRUCache;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    let res_val = json!({
+        "results": results,
+        "final_len": cache.len()
+    });
+
+    Ok(ResultBox::success(res_val)
+        .with_complexity(complexity)
+        .with_description("LRU cache operations completed."))
 }

@@ -10,7 +10,7 @@ use std::hash::Hash;
 pub struct LFUCache;
 pub struct LfuCacheState<K, V>
 where
-    K: Copy + Eq + Hash + Ord,
+    K: Clone + Eq + Hash + Ord,
 {
     capacity: usize,
     clock: u64,
@@ -18,6 +18,7 @@ where
     frequency_queues: BTreeMap<usize, VecDeque<(K, u64)>>,
 }
 
+#[derive(Clone)]
 struct LfuEntry<V> {
     value: V,
     frequency: usize,
@@ -45,14 +46,14 @@ impl Complexity for LFUCache {
 impl LFUCache {
     pub fn solve<K, V>(capacity: usize) -> LfuCacheState<K, V>
     where
-        K: Copy + Eq + Hash + Ord + Debug,
+        K: Clone + Eq + Hash + Ord + Debug,
     {
         Self::build(capacity)
     }
 
     pub fn build<K, V>(capacity: usize) -> LfuCacheState<K, V>
     where
-        K: Copy + Eq + Hash + Ord + Debug,
+        K: Clone + Eq + Hash + Ord + Debug,
     {
         AgentLogger::log(
             AgentFeedback::Info,
@@ -70,7 +71,7 @@ impl LFUCache {
 
 impl<K, V> LfuCacheState<K, V>
 where
-    K: Copy + Eq + Hash + Ord + Debug,
+    K: Clone + Eq + Hash + Ord + Debug,
 {
     pub fn get(&mut self, key: K) -> Option<&V> {
         if !self.values.contains_key(&key) {
@@ -81,7 +82,7 @@ where
             return None;
         }
 
-        self.touch(key);
+        self.touch(key.clone());
         self.discard_stale_fronts();
         self.values.get(&key).map(|entry| &entry.value)
     }
@@ -100,7 +101,7 @@ where
                 let entry = self.values.get_mut(&key).expect("entry exists");
                 std::mem::replace(&mut entry.value, value)
             };
-            self.touch(key);
+            self.touch(key.clone());
             return Some(previous);
         }
 
@@ -111,7 +112,7 @@ where
         self.clock += 1;
         let stamp = self.clock;
         self.values.insert(
-            key,
+            key.clone(),
             LfuEntry {
                 value,
                 frequency: 1,
@@ -121,7 +122,7 @@ where
         self.frequency_queues
             .entry(1)
             .or_default()
-            .push_back((key, stamp));
+            .push_back((key.clone(), stamp));
 
         AgentLogger::log(
             AgentFeedback::Step,
@@ -150,7 +151,7 @@ where
         self.frequency_queues
             .entry(next_frequency)
             .or_default()
-            .push_back((key, stamp));
+            .push_back((key.clone(), stamp));
         AgentLogger::log(
             AgentFeedback::Step,
             format!("Raised key {:?} to LFU frequency {}.", key, next_frequency),
@@ -175,7 +176,7 @@ where
                         Some(entry) if entry.frequency == frequency && entry.stamp == stamp
                     );
                     if is_live {
-                        evicted_key = Some(key);
+                        evicted_key = Some(key.clone());
                         break;
                     }
                 }
@@ -208,7 +209,7 @@ where
                     .frequency_queues
                     .get_mut(&frequency)
                     .expect("bucket exists");
-                while let Some((key, stamp)) = queue.front().copied() {
+                while let Some((key, stamp)) = queue.front().cloned() {
                     let is_stale = match self.values.get(&key) {
                         Some(entry) => entry.frequency != frequency || entry.stamp != stamp,
                         None => true,
@@ -236,19 +237,63 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
-#[macros::mcp_tool(name = "advanced_topics.lfu_cache", description = "Use this for solving lfu cache problems. Trigger Keywords: lfu_cache, lfu cache, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum LfuOperation {
+    Put { key: String, value: String },
+    Get { key: String },
 }
 
-async fn handle_lfu_cache(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct LfuCacheRequest {
+    pub capacity: usize,
+    pub operations: Vec<LfuOperation>,
+}
+
+#[macros::mcp_tool(name = "advanced_topics.lfu_cache", description = "Use this for solving lfu cache problems. Trigger Keywords: lfu_cache, lfu cache, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_lfu_cache(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn handle_lfu_cache(payload: Value) -> DsaResult<ResultBox<serde_json::Value>> {
+    let req: LfuCacheRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid LfuCacheRequest: {e}"),
+        hint: "Provide 'capacity' and an 'operations' list of {type: 'put'|'get', key, value?}.".to_string(),
+    })?;
+
+    let mut cache = LFUCache::build::<String, String>(req.capacity);
+    let mut results = Vec::new();
+
+    for op in &req.operations {
+        match op {
+            LfuOperation::Put { key, value } => {
+                let prev = cache.put(key.clone(), value.clone());
+                results.push(json!({ "op": "put", "key": key, "value": value, "previous": prev }));
+            }
+            LfuOperation::Get { key } => {
+                let val = cache.get(key.clone()).map(|v| v.clone());
+                results.push(json!({ "op": "get", "key": key, "value": val }));
+            }
+        }
+    }
+
+    let solver = LFUCache;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    let res_val = json!({
+        "results": results,
+        "final_len": cache.len()
+    });
+
+    Ok(ResultBox::success(res_val)
+        .with_complexity(complexity)
+        .with_description("LFU cache operations completed."))
 }

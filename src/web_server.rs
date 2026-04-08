@@ -6,7 +6,9 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use serde_json::json;
-use dsaengine::skills::graphs::dijkstra;
+use dsaengine::skills::{
+    advanced_topics, arrays_strings, graphs, sorting_searching, stacks_queues, trees_advanced,
+};
 use dsaengine::utils::api_docs;
 
 #[derive(OpenApi)]
@@ -61,11 +63,16 @@ async fn auth_middleware(
     next: middleware::Next,
 ) -> Result<axum::response::Response, StatusCode> {
     let key = headers.get("X-API-KEY").and_then(|k| k.to_str().ok());
-    
-    // In production, use an environment variable for this key
-    if key == Some("MASTER_KEY_2026") {
-        Ok(next.run(request).await)
+    let expected = std::env::var("MASTER_API_2026").ok();
+
+    if let Some(expected_key) = expected.as_deref() {
+        if key == Some(expected_key) {
+            Ok(next.run(request).await)
+        } else {
+            Err(StatusCode::UNAUTHORIZED)
+        }
     } else {
+        // Fail closed when the API key is not configured.
         Err(StatusCode::UNAUTHORIZED)
     }
 }
@@ -230,7 +237,69 @@ pub async fn run_server() {
     // 2. Generate all 100+ routes in one line
     let api_routes = Router::new()
         .route("/explore", get(explore_handler))
-        .route("/graphs/dijkstra", post(dijkstra::post))
+        .route("/graphs/dijkstra", post(graphs::dijkstra::post))
+        .route("/advanced/bloom_filter", post(advanced_topics::bloom_filter::post))
+        .route("/advanced/lfu_cache", post(advanced_topics::lfu_cache::post))
+        .route("/advanced/lru_cache", post(advanced_topics::lru_cache::post))
+        .route("/advanced/suffix_array", post(advanced_topics::suffix_array::post))
+        .route("/advanced_topics/bloom_filter", post(advanced_topics::bloom_filter::post))
+        .route("/advanced_topics/lfu_cache", post(advanced_topics::lfu_cache::post))
+        .route("/advanced_topics/lru_cache", post(advanced_topics::lru_cache::post))
+        .route("/advanced_topics/suffix_array", post(advanced_topics::suffix_array::post))
+        .route("/stacks/stack_via_queues", post(stacks_queues::stack_via_queues::post))
+        .route("/stacks/queue_via_stacks", post(stacks_queues::queue_via_stacks::post))
+        .route("/stacks/min_stack", post(stacks_queues::min_stack::post))
+        .route("/stacks_queues/stack_via_queues", post(stacks_queues::stack_via_queues::post))
+        .route("/stacks_queues/queue_via_stacks", post(stacks_queues::queue_via_stacks::post))
+        .route("/stacks_queues/min_stack", post(stacks_queues::min_stack::post))
+        .route("/trees_adv/top_k_elements", post(trees_advanced::top_k_elements::post))
+        .route("/trees_adv/segment_tree_query", post(trees_advanced::segment_tree_query::post))
+        .route("/trees_adv/segment_tree_builder", post(trees_advanced::segment_tree_builder::post))
+        .route("/trees_advanced/top_k_elements", post(trees_advanced::top_k_elements::post))
+        .route("/trees_advanced/segment_tree_query", post(trees_advanced::segment_tree_query::post))
+        .route("/trees_advanced/segment_tree_builder", post(trees_advanced::segment_tree_builder::post))
+        .route("/sorting/visualizer", post(sorting_searching::visualizer::post))
+        .route("/sorting/rotated_search", post(sorting_searching::rotated_search::post))
+        .route("/sorting_searching/visualizer", post(sorting_searching::visualizer::post))
+        .route("/sorting_searching/rotated_search", post(sorting_searching::rotated_search::post))
+        .route("/arrays/anagram_detector", post(arrays_strings::anagram_detector::post))
+        .route("/arrays/array_rotation", post(arrays_strings::array_rotation::post))
+        .route("/arrays/compression", post(arrays_strings::compression::post))
+        .route("/arrays/boyer_moore_voting", post(arrays_strings::boyer_moore_voting::post))
+        .route("/arrays/container_water", post(arrays_strings::container_water::post))
+        .route("/arrays/difference_array", post(arrays_strings::difference_array::post))
+        .route("/arrays/dutch_national_flag", post(arrays_strings::dutch_national_flag::post))
+        .route("/arrays/kadanes_algorithm", post(arrays_strings::kadanes_algorithm::post))
+        .route("/arrays/kmp_search", post(arrays_strings::kmp_search::post))
+        .route("/arrays/longest_substring", post(arrays_strings::longest_substring::post))
+        .route("/arrays/manachers_algorithm", post(arrays_strings::manachers_algorithm::post))
+        .route("/arrays/next_permutation", post(arrays_strings::next_permutation::post))
+        .route("/arrays/palindrome_matcher", post(arrays_strings::palindrome_matcher::post))
+        .route("/arrays/rabin_karp", post(arrays_strings::rabin_karp::post))
+        .route("/arrays/rainwater_trapping", post(arrays_strings::rainwater_trapping::post))
+        .route("/arrays/subarray_sum", post(arrays_strings::subarray_sum::post))
+        .route("/arrays/three_sum_solver", post(arrays_strings::three_sum_solver::post))
+        .route("/arrays/two_sum_matcher", post(arrays_strings::two_sum_matcher::post))
+        .route("/arrays/z_algorithm", post(arrays_strings::z_algorithm::post))
+        .route("/arrays_strings/anagram_detector", post(arrays_strings::anagram_detector::post))
+        .route("/arrays_strings/array_rotation", post(arrays_strings::array_rotation::post))
+        .route("/arrays_strings/compression", post(arrays_strings::compression::post))
+        .route("/arrays_strings/boyer_moore_voting", post(arrays_strings::boyer_moore_voting::post))
+        .route("/arrays_strings/container_water", post(arrays_strings::container_water::post))
+        .route("/arrays_strings/difference_array", post(arrays_strings::difference_array::post))
+        .route("/arrays_strings/dutch_national_flag", post(arrays_strings::dutch_national_flag::post))
+        .route("/arrays_strings/kadanes_algorithm", post(arrays_strings::kadanes_algorithm::post))
+        .route("/arrays_strings/kmp_search", post(arrays_strings::kmp_search::post))
+        .route("/arrays_strings/longest_substring", post(arrays_strings::longest_substring::post))
+        .route("/arrays_strings/manachers_algorithm", post(arrays_strings::manachers_algorithm::post))
+        .route("/arrays_strings/next_permutation", post(arrays_strings::next_permutation::post))
+        .route("/arrays_strings/palindrome_matcher", post(arrays_strings::palindrome_matcher::post))
+        .route("/arrays_strings/rabin_karp", post(arrays_strings::rabin_karp::post))
+        .route("/arrays_strings/rainwater_trapping", post(arrays_strings::rainwater_trapping::post))
+        .route("/arrays_strings/subarray_sum", post(arrays_strings::subarray_sum::post))
+        .route("/arrays_strings/three_sum_solver", post(arrays_strings::three_sum_solver::post))
+        .route("/arrays_strings/two_sum_matcher", post(arrays_strings::two_sum_matcher::post))
+        .route("/arrays_strings/z_algorithm", post(arrays_strings::z_algorithm::post))
         .route("/:category/:skill", post(template_skill_handler))
         .layer(middleware::from_fn(auth_middleware));
 
@@ -243,7 +312,11 @@ pub async fn run_server() {
         .layer(TraceLayer::new_for_http())
         .layer(SetResponseHeaderLayer::overriding(HeaderName::from_static("content-type"), |_: &_| Some(HeaderValue::from_static("application/json"))));
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await.expect("Failed to bind to port 3001");
-    println!(" dsaengine is live at http://127.0.0.1:3001");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "10000".to_string());
+    let bind_addr = format!("0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
+        .await
+        .expect("Failed to bind configured address");
+    println!(" dsaengine is live at http://{bind_addr}");
     axum::serve(listener, app).await.unwrap();
 }

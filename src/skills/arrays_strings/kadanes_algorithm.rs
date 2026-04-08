@@ -108,19 +108,38 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct KadanesAlgorithmRequest {
+    pub nums: Vec<i32>,
+}
+
 #[macros::mcp_tool(name = "arrays_strings.kadanes_algorithm", description = "Use this for solving kadanes algorithm problems. Trigger Keywords: kadanes_algorithm, kadanes algorithm, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_kadanes_algorithm(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_kadanes_algorithm(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+    let req: KadanesAlgorithmRequest =
+        serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+            message: format!("Invalid KadanesAlgorithmRequest: {e}"),
+            hint: "Provide 'nums' array.".to_string(),
+        })?;
+
+    let best = KadanesAlgorithm::solve(&req.nums);
+    let solver = KadanesAlgorithm;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(json!({
+        "best_subarray": best.map(|(sum, start, end)| json!({"sum": sum, "start": start, "end": end}))
+    }))
+    .with_complexity(complexity)
+    .with_description("Kadane maximum-subarray scan completed."))
 }

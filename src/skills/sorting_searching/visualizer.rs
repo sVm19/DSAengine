@@ -84,19 +84,63 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum VisualizerRequest {
+    Interval {
+        nums: Vec<i32>,
+        left: usize,
+        right: usize,
+    },
+    Histogram {
+        counts: Vec<usize>,
+        offset: Option<i32>,
+    },
+}
+
 #[macros::mcp_tool(name = "sorting_searching.visualizer", description = "Use this for solving visualizer problems. Trigger Keywords: visualizer, visualizer, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_visualizer(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_visualizer(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+    let req: VisualizerRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid VisualizerRequest: {e}"),
+        hint: "Use mode='interval' with nums/left/right or mode='histogram' with counts."
+            .to_string(),
+    })?;
+
+    let output = match req {
+        VisualizerRequest::Interval { nums, left, right } => {
+            if nums.is_empty() {
+                return Err(DsaError::InvalidInput {
+                    message: "nums cannot be empty for interval mode.".to_string(),
+                    hint: "Provide at least one value in 'nums'.".to_string(),
+                });
+            }
+            json!({
+                "mode": "interval",
+                "view": Visualizer::view_interval(&nums, left, right)
+            })
+        }
+        VisualizerRequest::Histogram { counts, offset } => json!({
+            "mode": "histogram",
+            "view": Visualizer::display_histogram(&counts, offset.unwrap_or(0))
+        }),
+    };
+
+    let solver = Visualizer;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(output)
+        .with_complexity(complexity)
+        .with_description("Sorting/search visualizer output generated."))
 }

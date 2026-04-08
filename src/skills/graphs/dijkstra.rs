@@ -1,4 +1,5 @@
 use crate::utils::{api_docs, responses::*};
+use crate::utils::complexity::Complexity;
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 use std::collections::BinaryHeap;
@@ -122,18 +123,87 @@ impl Dijkstra {
 // --- AXUM WEB BRIDGE ---
 
 #[macros::mcp_tool(name = "graphs.dijkstra", description = "Use this for solving dijkstra problems. Trigger Keywords: graph, dijkstra, shortest path, traversal. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_dijkstra(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_dijkstra(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+    #[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+    struct DijkstraRequest {
+        num_nodes: Option<usize>,
+        source: usize,
+        destination: Option<usize>,
+        edges: Option<Vec<(usize, usize, u64)>>,
+        adj: Option<Vec<Vec<(usize, u64)>>>,
+        directed: Option<bool>,
+    }
+
+    let req: DijkstraRequest = serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+        message: format!("Invalid DijkstraRequest: {e}"),
+        hint: "Provide 'source' and either 'adj' or ('edges' + 'num_nodes').".to_string(),
+    })?;
+
+    let adj = if let Some(adj) = req.adj {
+        adj
+    } else if let Some(edges) = req.edges {
+        let n = req.num_nodes.ok_or_else(|| DsaError::InvalidInput {
+            message: "num_nodes is required when using edges.".to_string(),
+            hint: "Include 'num_nodes' with your edge list.".to_string(),
+        })?;
+        edges.validate_nodes(n)?;
+        if req.directed.unwrap_or(false) {
+            let mut adj = vec![Vec::new(); n];
+            for (u, v, w) in edges {
+                adj[u].push((v, w));
+            }
+            adj
+        } else {
+            Dijkstra::build_adj(n, &edges)
+        }
+    } else {
+        return Err(DsaError::InvalidInput {
+            message: "Missing graph input.".to_string(),
+            hint: "Provide 'adj' or 'edges' with 'num_nodes'.".to_string(),
+        });
+    };
+
+    if adj.is_empty() {
+        return Err(DsaError::InvalidInput {
+            message: "Graph cannot be empty.".to_string(),
+            hint: "Provide at least one node in adjacency list.".to_string(),
+        });
+    }
+    validate_source_in_bounds(req.source, adj.len())?;
+
+    let distances = Dijkstra::solve(&adj, req.source);
+    let path = if let Some(dst) = req.destination {
+        validate_node_in_bounds(dst, adj.len(), "destination node")?;
+        Dijkstra::shortest_path(&adj, req.source, dst).map(|(distance, nodes)| {
+            json!({
+                "distance": distance,
+                "nodes": nodes
+            })
+        })
+    } else {
+        None
+    };
+
+    let solver = Dijkstra;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(json!({
+        "source": req.source,
+        "distances": distances,
+        "path_to_destination": path,
+    }))
+    .with_complexity(complexity)
+    .with_description("Dijkstra shortest-path computation completed."))
 }

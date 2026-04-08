@@ -16,3 +16,7 @@
 
 # Docker cache and local artifact files
 recipe.json
+
+# Local secrets
+.env
+.env.*

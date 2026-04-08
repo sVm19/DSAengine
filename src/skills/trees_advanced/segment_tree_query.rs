@@ -61,19 +61,55 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct SegmentTreeQueryRequest {
+    pub tree: Vec<i32>,
+    pub left: usize,
+    pub right: usize,
+}
+
 #[macros::mcp_tool(name = "trees_advanced.segment_tree_query", description = "Use this for solving segment tree query problems. Trigger Keywords: segment_tree_query, segment tree query, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_segment_tree_query(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_segment_tree_query(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+    let req: SegmentTreeQueryRequest =
+        serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+            message: format!("Invalid SegmentTreeQueryRequest: {e}"),
+            hint: "Provide 'tree', 'left', and 'right' for range [left, right).".to_string(),
+        })?;
+
+    if req.tree.is_empty() || req.tree.len() % 2 != 0 {
+        return Err(DsaError::InvalidInput {
+            message: "tree must be a non-empty 2N segment-tree array.".to_string(),
+            hint: "Build a tree first via segment_tree_builder and pass that output.".to_string(),
+        });
+    }
+    let n = req.tree.len() / 2;
+    if req.left > req.right || req.right > n {
+        return Err(DsaError::InvalidInput {
+            message: format!("Invalid range [{}, {}) for base size {}.", req.left, req.right, n),
+            hint: "Use 0 <= left <= right <= N where N is original array length.".to_string(),
+        });
+    }
+
+    let sum = SegmentTreeQuery::solve(&req.tree, req.left, req.right);
+
+    let solver = SegmentTreeQuery;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(json!({
+        "sum": sum
+    }))
+    .with_complexity(complexity)
+    .with_description("Segment tree range query completed."))
 }

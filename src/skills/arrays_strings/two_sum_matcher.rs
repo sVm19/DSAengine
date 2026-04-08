@@ -66,12 +66,39 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct TwoSumMatcherRequest {
+    pub nums: Vec<i32>,
+    pub target: i32,
+}
+
 #[macros::mcp_tool(name = "two_sum_matcher", description = "Use this for solving two sum matcher problems. Trigger Keywords: two_sum_matcher, two sum matcher, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "temporary logic removed from auto-refactor; endpoint not yet restored"
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    let req: TwoSumMatcherRequest = match serde_json::from_value(payload) {
+        Ok(req) => req,
+        Err(e) => {
+            let err = DsaError::InvalidInput {
+                message: format!("Invalid TwoSumMatcherRequest: {e}"),
+                hint: "Provide 'nums' and 'target'.".to_string(),
+            };
+            return err.into_response();
+        }
+    };
+
+    let pair = TwoSumMatcher::solve(&req.nums, req.target);
+    let solver = TwoSumMatcher;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
     });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+
+    let res = ResultBox::success(json!({
+        "pair": pair.map(|(i, j)| vec![i, j])
+    }))
+    .with_complexity(complexity)
+    .with_description("Two-sum matching completed.");
+
+    (StatusCode::OK, Json(res)).into_response()
 }

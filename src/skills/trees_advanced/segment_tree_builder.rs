@@ -70,19 +70,67 @@ use crate::utils::{api_docs, responses::*};
 use axum::{Json, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct SegmentTreePointUpdate {
+    pub index: usize,
+    pub value: i32,
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, schemars::JsonSchema)]
+pub struct SegmentTreeBuilderRequest {
+    pub nums: Vec<i32>,
+    pub updates: Option<Vec<SegmentTreePointUpdate>>,
+}
+
 #[macros::mcp_tool(name = "trees_advanced.segment_tree_builder", description = "Use this for solving segment tree builder problems. Trigger Keywords: segment_tree_builder, segment tree builder, algorithm, dsa. Input Hints: Look for input fields like nums, numbers, arr, target, edges, adj, source, capacity, weight, values in the user's text to populate task arguments.. Why: Choose this over generic fallback when the problem domain matches the algorithm's strengths for best-performance results.")]
-pub async fn post(Json(_payload): Json<Value>) -> impl IntoResponse {
-    let body = json!({
-        "status": "error",
-        "engine": "dsaengine",
-        "error": "This endpoint is temporarily disabled; under reconstruction."
-    });
-    (StatusCode::NOT_IMPLEMENTED, Json(body))
+pub async fn post(Json(payload): Json<Value>) -> impl IntoResponse {
+    match handle_segment_tree_builder(payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_segment_tree_builder(payload: Value) -> DsaResult<ResultBox> {
-    Err(DsaError::InvalidInput {
-        message: "Temporary handler placeholder".to_string(),
-        hint: "Endpoint currently under recovery; please try a different skill or wait until rebuild completes.".to_string(),
-    })
+    let req: SegmentTreeBuilderRequest =
+        serde_json::from_value(payload).map_err(|e| DsaError::InvalidInput {
+            message: format!("Invalid SegmentTreeBuilderRequest: {e}"),
+            hint: "Provide 'nums' and optional 'updates' entries with {index, value}."
+                .to_string(),
+        })?;
+
+    if req.nums.is_empty() {
+        return Err(DsaError::InvalidInput {
+            message: "nums cannot be empty.".to_string(),
+            hint: "Provide at least one integer in 'nums'.".to_string(),
+        });
+    }
+
+    let mut tree = SegmentTreeBuilder::solve(&req.nums);
+    if let Some(updates) = req.updates {
+        let n = req.nums.len();
+        for update in updates {
+            if update.index >= n {
+                return Err(DsaError::IndexOutOfBounds {
+                    index: update.index,
+                    bounds: n,
+                    context: "segment tree point update index".to_string(),
+                });
+            }
+            SegmentTreeBuilder::point_update(&mut tree, update.index, update.value);
+        }
+    }
+
+    let solver = SegmentTreeBuilder;
+    let complexity = json!({
+        "name": solver.name(),
+        "time": solver.time_complexity(),
+        "space": solver.space_complexity(),
+        "description": solver.description(),
+    });
+
+    Ok(ResultBox::success(json!({
+        "tree": tree
+    }))
+    .with_complexity(complexity)
+    .with_description("Segment tree built successfully."))
 }
