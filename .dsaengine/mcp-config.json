@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dsaengine": {
+      "command": "C:\dsaengine\target\release\dsaengine.exe",
+      "args": ["--mcp"],
+      "description": "DSAEngine — optimal DSA algorithm advisor for vibe coders"
+    }
+  }
+}
