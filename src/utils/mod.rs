@@ -9,6 +9,7 @@ pub mod pattern_matcher;
 pub mod responses; // Agent-oriented error handling
 pub mod rules_generator;
 pub mod visualizer; // ASCII and Terminal rendering traits // Generates rules files for all 7 coding agents
+pub mod executor;
 
 /// Re-exporting the benchmark function for easy access
 /// Usage: dsaengine::utils::benchmark(|| my_function());

@@ -53,8 +53,8 @@ pub async fn handle_tools_call(name: &str, arguments: Value) -> Value {
     if name == "dsa_classify" {
         return handle_classify(arguments);
     }
-    // forward to HTTP backend (same as original execute_algorithm)
-    match execute_algorithm(name, arguments).await {
+    // forward to local in-memory executor
+    match crate::utils::executor::execute_algorithm_local(name, arguments).await {
         Ok(result) => json!({
             "content": [{ "type": "text", "text": format!("Executed '{}' successfully.", name) }],
             "structuredContent": result
@@ -112,32 +112,7 @@ fn handle_classify(arguments: Value) -> Value {
     }
 }
 
-/// Executes an algorithm tool via the internal HTTP server.
-async fn execute_algorithm(name: &str, arguments: Value) -> Result<Value, String> {
-    let (category, skill) = name
-        .split_once('.')
-        .ok_or_else(|| format!("Invalid tool name '{name}'. Expected '<category>.<skill>'."))?;
-    let master_key = std::env::var("MASTER_API_2026")
-        .map_err(|_| "MASTER_API_2026 env var not set".to_string())?;
-    let port = std::env::var("PORT").unwrap_or_else(|_| "10000".to_string());
-    let base =
-        std::env::var("INTERNAL_BASE_URL").unwrap_or_else(|_| format!("http://127.0.0.1:{port}"));
-    let url = format!("{base}/api/v1/{category}/{skill}");
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .header("X-API-KEY", master_key)
-        .json(&arguments)
-        .send()
-        .await
-        .map_err(|e| format!("HTTP call failed: {e}"))?;
-    let status = resp.status().as_u16();
-    let body: Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("JSON parse error: {e}"))?;
-    Ok(json!({ "status_code": status, "response": body }))
-}
+
 
 fn error_result(code: i64, message: &str) -> Value {
     json!({

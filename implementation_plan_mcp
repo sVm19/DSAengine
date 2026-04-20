@@ -1,0 +1,304 @@
+# Zero-Cost DSAEngine: Local MCP Stdio Server for Coding Agents
+> Supports 7 AI coding agents — Claude Code, Cursor, GitHub Copilot, Windsurf, Kiro, Augment Code, Google Antigravity
+
+## The Core Insight
+
+You **don't need to pay for AI APIs**. Here's why:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  USER types prompt in Cursor/Windsurf/Antigravity            │
+│  ↓                                                           │
+│  Agent's LLM (already paid via subscription) reads           │
+│  .cursorrules → sees "always consult DSAEngine first"        │
+│  ↓                                                           │
+│  LLM calls dsa_classify("friend suggestions in social app") │
+│  ↓                                                           │
+│  DSAEngine (local Rust binary, stdin/stdout) responds:       │
+│  "Use BFS for mutual friends O(V+E), Union-Find O(α(n))"   │
+│  ↓                                                           │
+│  LLM writes optimized code using DSAEngine's guidance       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**The agent's own LLM is your free AI classifier.** Your DSAEngine just needs to be a fast, local, deterministic tool server.
+
+## How "Runs Before Every Prompt" Works
+
+> [!IMPORTANT]
+> This is achieved through **two layers**, both zero-cost:
+
+### Layer 1: Rules Files (Prompt Injection)
+
+Files like `.cursorrules`, `.windsurfrules`, `CLAUDE.md` are **prepended to every single user prompt** by the coding agent. We write a rules file that says:
+
+```
+You have access to DSAEngine MCP tools. BEFORE writing ANY code that involves
+arrays, graphs, trees, caching, sorting, searching, or string processing,
+you MUST call `dsa_classify` first to get the optimal algorithm.
+NEVER implement brute-force when DSAEngine has a better solution.
+```
+
+This makes the LLM (which the user already pays for) act as the intelligent router on every prompt.
+
+### Layer 2: MCP Stdio Protocol
+
+The Rust binary runs as a local child process. The coding agent spawns it, communicates over stdin/stdout using JSON-RPC 2.0. **No HTTP, no hosting, no API keys, no network.**
+
+```mermaid
+graph LR
+    A["User Prompt"] --> B["Cursor/Windsurf LLM"]
+    B -->|"reads .cursorrules"| C["Sees DSAEngine instruction"]
+    C -->|"stdin JSON-RPC"| D["dsaengine --mcp"]
+    D -->|"stdout JSON-RPC"| B
+    B --> E["Writes Optimized Code"]
+    
+    style D fill:#2d5016,stroke:#4ade80,color:#fff
+    style B fill:#1e3a5f,stroke:#60a5fa,color:#fff
+```
+
+## Agent Compatibility Matrix
+
+Here is exactly how DSAEngine integrates with each of the 7 supported agents — researched and verified:
+
+### Tier 1 — Full Native MCP Stdio (Plug-and-play)
+
+These agents run your binary directly as a child process via stdio. Zero HTTP, zero hosting.
+
+| Agent | MCP Config File | Rules File | MCP Transport |
+|---|---|---|---|
+| **Claude Code** | `~/.claude/claude_desktop_config.json` | `CLAUDE.md` (project root) | stdio |
+| **Cursor** | Settings → MCP tab (GUI) or `~/.cursor/mcp.json` | `.cursorrules` | stdio or HTTP |
+| **Windsurf** | `~/.windsurf/mcp_config.json` | `.windsurfrules` | stdio, HTTP, SSE |
+| **Kiro** (AWS) | `.vscode/mcp.json` or User Profile `mcp.json` | `.kiro/steering/*.md` | stdio |
+| **GitHub Copilot** | VS Code `settings.json` → `github.copilot.mcp` | `.github/copilot-instructions.md` | stdio |
+| **Augment Code** | Augment settings panel ("Easy MCP") | `augment-guidelines.md` | stdio/HTTP |
+| **Google Antigravity** | Agent Manager UI → MCP Servers | `.agent/rules/*.md` or `CLAUDE.md` | stdio/HTTP |
+
+**Stdio MCP config snippet (same format for all Tier 1 agents):**
+```json
+{
+  "mcpServers": {
+    "dsaengine": {
+      "command": "dsaengine",
+      "args": ["--mcp"],
+      "description": "DSAEngine — optimal algorithm advisor for vibe coders"
+    }
+  }
+}
+```
+
+### Rules File Generation — All 7 Targets
+
+The `dsaengine --install` command generates **all relevant files** for the detected agents:
+
+```
+project/
+├── CLAUDE.md                          # Claude Code + Antigravity
+├── .cursorrules                       # Cursor
+├── .windsurfrules                     # Windsurf
+├── .github/
+│   └── copilot-instructions.md        # GitHub Copilot
+├── .kiro/
+│   └── steering/
+│       └── dsaengine.md               # Kiro steering file
+├── augment-guidelines.md              # Augment Code
+├── .agent/
+│   └── rules/
+│       └── dsaengine.md               # Google Antigravity
+└── .dsaengine/
+    ├── rules.md                       # Generic fallback
+    └── mcp-config.json                # Universal MCP config snippet
+```
+
+---
+
+## Proposed Changes
+
+### Component 1: MCP Stdio Server
+
+#### [MODIFY] [main.rs](file:///c:/dsaengine/src/main.rs)
+Add CLI flag detection. If `--mcp` is passed, run stdio mode instead of web server:
+
+```rust
+#[tokio::main]
+async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.contains(&"--mcp".to_string()) {
+        // MCP stdio mode — zero cost, local, no HTTP
+        mcp_stdio::run().await;
+    } else {
+        // Existing web server mode (for Render deployment)
+        web_server::run_server().await;
+    }
+}
+```
+
+#### [NEW] [mcp_stdio.rs](file:///c:/dsaengine/src/mcp_stdio.rs)
+The core stdio server. Reads JSON-RPC from stdin, writes to stdout:
+
+```rust
+// Reads stdin line by line (MCP uses newline-delimited JSON)
+// Routes to the same handlers the web server uses
+// Adds two new meta-tools: dsa_classify and dsa_suggest
+// Zero network, zero API cost
+```
+
+Key functions:
+- `run()` — Main stdin/stdout read loop
+- `handle_initialize()` — Returns server capabilities
+- `handle_tools_list()` — Lists all 142+ tools + classify + suggest
+- `handle_tools_call()` — Dispatches to the right algorithm handler
+- All responses written to stdout as JSON-RPC
+
+---
+
+### Component 2: Deterministic DSA Classifier (No AI Needed)
+
+#### [NEW] [src/utils/classifier.rs](file:///c:/dsaengine/src/utils/classifier.rs)
+A keyword-based pattern matcher that recommends algorithms. **No AI API calls** — pure Rust string matching:
+
+```rust
+pub struct Recommendation {
+    pub algorithm: &'static str,
+    pub category: &'static str,
+    pub confidence: f32,       // 0.0 - 1.0
+    pub reason: &'static str,
+    pub time_complexity: &'static str,
+    pub space_complexity: &'static str,
+    pub tool_name: &'static str,  // MCP tool to call
+}
+
+/// Classifies a problem description into algorithm recommendations.
+/// Uses deterministic keyword/pattern matching — ZERO AI cost.
+pub fn classify(description: &str) -> Vec<Recommendation> { ... }
+```
+
+**Pattern rules include:**
+
+| Keywords Detected | Algorithm Recommended | Complexity |
+|---|---|---|
+| "shortest path" + "weighted" | Dijkstra | O(E log V) |
+| "shortest path" + "negative" | Bellman-Ford | O(V·E) |
+| "connected components" | Union-Find | O(α(n)) |
+| "cache" + "eviction" | LRU/LFU Cache | O(1) |
+| "substring" + "pattern" | KMP / Rabin-Karp | O(n+m) |
+| "sorted array" + "search" | Binary Search | O(log n) |
+| "minimum spanning" | Kruskal / Prim | O(E log V) |
+| "topological" / "dependency order" | Topological Sort | O(V+E) |
+| "sliding window" / "subarray sum" | Sliding Window | O(n) |
+| "duplicate" / "frequency" | HashMap Counter | O(n) |
+| "balanced tree" / "ordered set" | AVL Tree | O(log n) |
+| "prefix" / "autocomplete" | Trie | O(L) |
+| nested loop detected in code | Suggests HashMap/Set | O(n) → O(1) |
+
+~100+ rules covering all 142 algorithms.
+
+---
+
+### Component 3: Rules File Generator
+
+#### [NEW] [src/utils/rules_generator.rs](file:///c:/dsaengine/src/utils/rules_generator.rs)
+Generates agent-specific rules files from the algorithm registry:
+
+- `.cursorrules` — For Cursor users
+- `.windsurfrules` — For Windsurf users  
+- `CLAUDE.md` — For Claude Code users
+- `.antigravity/rules.md` — For Antigravity users
+
+The rules file will contain:
+1. **System instruction**: "Always consult DSAEngine before writing algorithm code"
+2. **Algorithm catalog**: Quick reference of all available algorithms
+3. **Anti-pattern list**: Common O(n²) mistakes the LLM should avoid
+4. **Decision tree**: When to use which algorithm category
+
+#### [NEW] [templates/cursorrules.tmpl](file:///c:/dsaengine/templates/cursorrules.tmpl)
+#### [NEW] [templates/windsurfrules.tmpl](file:///c:/dsaengine/templates/windsurfrules.tmpl)
+
+---
+
+### Component 4: Installation CLI
+
+#### [MODIFY] [main.rs](file:///c:/dsaengine/src/main.rs)
+Add `--install` mode that:
+1. Copies the binary to a well-known location
+2. Generates rules files in the current project directory
+3. Outputs MCP config for the user to paste into their agent settings
+
+```bash
+# User runs this once in their project:
+dsaengine --install
+
+# Output:
+# ✅ Generated .cursorrules with DSAEngine instructions
+# ✅ Generated .windsurfrules with DSAEngine instructions  
+# 
+# Add this to your Cursor MCP settings:
+# {
+#   "dsaengine": {
+#     "command": "C:\\path\\to\\dsaengine.exe",
+#     "args": ["--mcp"]
+#   }
+# }
+```
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Decision: Keep HTTP mode or go stdio-only?**
+> 
+> The current Render deployment (HTTP mode) serves a different purpose than the local MCP stdio mode. I recommend keeping BOTH:
+> - `dsaengine` → HTTP web server (for Render, Swagger UI, direct API)
+> - `dsaengine --mcp` → Local stdio server (for Cursor/Windsurf, zero cost)
+> - `dsaengine --install` → Setup helper (generates rules files + config)
+
+> [!WARNING]
+> **The classifier rules need your domain expertise.**
+> I'll implement ~100 keyword rules covering all 142 algorithms, but you should review the mappings since you know which algorithms map to which real-world problems best.
+
+## Open Questions
+
+1. **Distribution format**: Should users install via `cargo install dsaengine` (requires Rust toolchain) or download pre-built binaries from GitHub Releases? Or both?
+
+2. **Algorithm output format**: When the LLM calls an algorithm tool, should it return:
+   - (a) Just the **result** (e.g., shortest path = [1, 3, 5], cost = 12)
+   - (b) The **Rust source code** of the algorithm for the LLM to adapt
+   - (c) A **language-agnostic pseudocode** the LLM can translate to any language
+   - (d) All of the above based on a `mode` parameter
+
+3. **How many algorithms should `dsa_classify` recommend?** Top 1? Top 3 with confidence scores?
+
+## Verification Plan
+
+### Automated Tests
+```bash
+# Test MCP stdio mode responds to initialize
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | dsaengine --mcp
+
+# Test classifier
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dsa_classify","arguments":{"description":"find shortest path in weighted graph"}}}' | dsaengine --mcp
+
+# Test tool listing
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/list"}' | dsaengine --mcp
+```
+
+### Manual Verification
+- Configure in Cursor with MCP settings, verify tool discovery
+- Ask Cursor "build a friend recommendation system" and verify it calls DSAEngine
+- Verify zero external network calls during operation
+
+## File Summary
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/main.rs` | MODIFY | Add `--mcp` and `--install` CLI flags |
+| `src/mcp_stdio.rs` | NEW | MCP stdin/stdout JSON-RPC server |
+| `src/utils/classifier.rs` | NEW | Deterministic keyword-based algorithm recommender |
+| `src/utils/rules_generator.rs` | NEW | Generates .cursorrules/.windsurfrules |
+| `templates/cursorrules.tmpl` | NEW | Rules template for Cursor |
+| `templates/windsurfrules.tmpl` | NEW | Rules template for Windsurf |
+| `src/utils/mod.rs` | MODIFY | Register new modules |
+| `src/web_server.rs` | MODIFY | Extract shared handler logic |

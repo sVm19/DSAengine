@@ -12,7 +12,6 @@
 //!   agent → stdin  → any other      → server returns method-not-found error
 
 use dsaengine::skill_routes;
-use dsaengine::utils::classifier;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -138,118 +137,6 @@ async fn handle_tools_call(msg: &Value) -> Value {
         .cloned()
         .unwrap_or_else(|| json!({}));
 
-    if name.is_empty() {
-        return error_result(-32602, "Missing tool name in params");
-    }
-
-    // ── Route to dsa_classify ────────────────────────────────────────────────
-    if name == "dsa_classify" {
-        return handle_classify(arguments);
-    }
-
-    // ── Route to algorithm tools via internal HTTP call ──────────────────────
-    match execute_algorithm(name, arguments).await {
-        Ok(result) => json!({
-            "content": [{
-                "type": "text",
-                "text": format!("Executed '{}' successfully.", name)
-            }],
-            "structuredContent": result
-        }),
-        Err(e) => error_result(-32000, &e),
-    }
-}
-
-/// Handles `dsa_classify` — pure Rust, zero network, zero AI cost.
-fn handle_classify(arguments: Value) -> Value {
-    let description = arguments
-        .get("description")
-        .and_then(Value::as_str)
-        .unwrap_or("");
-
-    if description.is_empty() {
-        return error_result(-32602, "dsa_classify requires a 'description' string");
-    }
-
-    let recommendations = classifier::classify(description);
-
-    if recommendations.is_empty() {
-        return json!({
-            "content": [{
-                "type": "text",
-                "text": "No strong algorithm match found. Consider describing the data structure, \
-                         operation type (search/insert/delete), or problem pattern (e.g. 'sliding window', \
-                         'shortest path', 'top-k elements')."
-            }],
-            "structuredContent": {
-                "status": "no_match",
-                "suggestions": [
-                    "Try adding keywords like: shortest path, cache, subarray, prefix, connected components, sorted, pattern search",
-                    "Or browse all tools with tools/list"
-                ]
-            }
-        });
-    }
-
-    let top = &recommendations[0];
-    let summary = format!(
-        "Recommended: {} ({}). Call tool: `{}`",
-        top.algorithm, top.time_complexity, top.tool_name
-    );
-
-    json!({
-        "content": [{
-            "type": "text",
-            "text": summary
-        }],
-        "structuredContent": {
-            "status": "ok",
-            "recommendations": recommendations,
-            "next_step": format!("Call `{}` with your data to get the optimal implementation.", top.tool_name)
-        }
-    })
-}
-
-/// Calls the algorithm tool by routing through the existing HTTP web server
-/// running on localhost. The web server is already running (same process boot),
-/// or we forward using the internal base URL.
-async fn execute_algorithm(name: &str, arguments: Value) -> Result<Value, String> {
-    let (category, skill) = name
-        .split_once('.')
-        .ok_or_else(|| format!("Invalid tool name '{name}'. Expected '<category>.<skill>'."))?;
-
-    let master_key = std::env::var("MASTER_API_2026")
-        .map_err(|_| "MASTER_API_2026 env var not set. Run `dsaengine` (HTTP mode) in background or set the key.".to_string())?;
-
-    let port = std::env::var("PORT").unwrap_or_else(|_| "10000".to_string());
-    let base =
-        std::env::var("INTERNAL_BASE_URL").unwrap_or_else(|_| format!("http://127.0.0.1:{port}"));
-    let url = format!("{base}/api/v1/{category}/{skill}");
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post(&url)
-        .header("X-API-KEY", master_key)
-        .json(&arguments)
-        .send()
-        .await
-        .map_err(|e| {
-            format!("HTTP call to {url} failed: {e}. Is `dsaengine` HTTP server running?")
-        })?;
-
-    let status = response.status().as_u16();
-    let body: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("JSON parse error from {url}: {e}"))?;
-
-    Ok(json!({ "status_code": status, "response": body }))
-}
-
-fn error_result(code: i64, message: &str) -> Value {
-    json!({
-        "content": [{ "type": "text", "text": message }],
-        "isError": true,
-        "error": { "code": code, "message": message }
-    })
+    // Delegate entirely to mcp_common — single source of truth, zero HTTP.
+    dsaengine::mcp_common::handle_tools_call(name, arguments).await
 }
