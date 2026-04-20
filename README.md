@@ -32,12 +32,19 @@ Cursor writes optimized code
 
 ---
 
-## 🚀 Quick Start (30 seconds)
-
 ### 1. Install DSAEngine
+
+**Linux / macOS (Bash)**
 ```bash
-cargo install dsaengine
+curl -sSL https://raw.githubusercontent.com/sVm19/DSAengine/main/install.sh | bash
 ```
+
+**Windows (PowerShell)**
+```powershell
+irm https://raw.githubusercontent.com/sVm19/DSAengine/main/install.ps1 | iex
+```
+
+*Note: Requires `git` and `cargo` installed if no prebuilt binary is available for your platform.*
 
 ### 2. Setup Your Agent
 - **Cursor**: [Setup Guide](docs/setup/CURSOR_SETUP.md)
