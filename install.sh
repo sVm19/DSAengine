@@ -85,8 +85,8 @@ else
     
     # Clone and build
     BUILD_DIR=$(mktemp -d)
-    echo -e "${BLUE}📦 Cloning repository...${RESET}"
-    git clone --quiet "$REPO_URL" "$BUILD_DIR"
+    echo -e "${BLUE}📦 Cloning repository (main)...${RESET}"
+    git clone --quiet -b main "$REPO_URL" "$BUILD_DIR"
     
     echo -e "${BLUE}🔨 Compiling release block... (this may take a few minutes)${RESET}"
     # Move into isolated dir so we don't pollute local workspace state
