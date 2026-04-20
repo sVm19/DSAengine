@@ -202,14 +202,11 @@ pub async fn run_server() {
         .layer(TraceLayer::new_for_http())
         .layer(SetResponseHeaderLayer::overriding(HeaderName::from_static("content-type"), |_: &_| Some(HeaderValue::from_static("application/json"))));
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "10000".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
     let bind_addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .expect("Failed to bind configured address");
-    println!(
-        " dsaengine is live at http://{bind_addr} — {} tools registered",
-        skill_routes::all_tools().len()
-    );
+    println!("DSA Engine HTTP server running at http://localhost:{port}");
     axum::serve(listener, app).await.unwrap();
 }

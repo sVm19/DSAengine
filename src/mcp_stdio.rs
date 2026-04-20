@@ -21,7 +21,7 @@ pub async fn run() {
     let stdin = io::stdin();
     let stdout = io::stdout();
 
-    eprintln!("[dsaengine-mcp] stdio server ready");
+    eprintln!("DSA Engine MCP mode started. Waiting for tool calls...");
 
     for line in stdin.lock().lines() {
         let line = match line {
